@@ -1,7 +1,0 @@
-{
-  "name": "Mordomo HA",
-  "homeassistant": "2024.1.0",
-  "render_readme": true,
-  "domains": ["mordomo_ha"],
-  "country": ["PT", "BR"]
-}
