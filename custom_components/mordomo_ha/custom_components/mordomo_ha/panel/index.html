@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mordomo HA</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0a0e14;
+  --bg-secondary: #111820;
+  --bg-card: #161d27;
+  --bg-card-hover: #1a2332;
+  --bg-input: #1e2738;
+  --border: #2a3545;
+  --border-active: #3d8bfd;
+  --text-primary: #e8edf4;
+  --text-secondary: #8899aa;
+  --text-muted: #5a6a7a;
+  --accent: #3d8bfd;
+  --accent-hover: #5a9eff;
+  --accent-glow: rgba(61, 139, 253, 0.15);
+  --green: #2dd4a0;
+  --green-bg: rgba(45, 212, 160, 0.1);
+  --red: #f0566a;
+  --red-bg: rgba(240, 86, 106, 0.1);
+  --yellow: #f5b742;
+  --yellow-bg: rgba(245, 183, 66, 0.1);
+  --purple: #a78bfa;
+  --msg-in-bg: #1a2332;
+  --msg-out-bg: #1a3055;
+  --scrollbar-track: #111820;
+  --scrollbar-thumb: #2a3545;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --transition: 200ms ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+/* ── Layout ── */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 1fr;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.sidebar-header {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.sidebar-logo .logo-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 4px 16px rgba(61, 139, 253, 0.3);
+}
+
+.sidebar-logo h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.sidebar-logo .version {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--green);
+  background: var(--green-bg);
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-top: 10px;
+}
+
+.status-pill .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.nav-item:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: rgba(61, 139, 253, 0.2);
+}
+
+.nav-item .icon { font-size: 18px; width: 24px; text-align: center; }
+
+.nav-item .badge {
+  margin-left: auto;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Main Content ── */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-header {
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.page-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.page-header p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+}
+
+/* ── Tab views ── */
+.tab-view { display: none; height: 100%; }
+.tab-view.active { display: flex; flex-direction: column; }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: border-color var(--transition);
+}
+
+.card:hover { border-color: var(--border-active); }
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+/* ── Stats Grid ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.stat-icon.blue { background: var(--accent-glow); }
+.stat-icon.green { background: var(--green-bg); }
+.stat-icon.yellow { background: var(--yellow-bg); }
+.stat-icon.red { background: var(--red-bg); }
+.stat-icon.purple { background: rgba(167, 139, 250, 0.1); }
+
+.stat-info .value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.stat-info .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ── Chat ── */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.5;
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.chat-bubble.in {
+  align-self: flex-start;
+  background: var(--msg-in-bg);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-bubble.out {
+  align-self: flex-end;
+  background: var(--msg-out-bg);
+  border: 1px solid rgba(61, 139, 253, 0.2);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble .meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-bubble .phone-tag {
+  background: rgba(61, 139, 253, 0.15);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+.chat-input-area {
+  padding: 16px 28px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.chat-input-area textarea:focus {
+  border-color: var(--accent);
+}
+
+.chat-input-area textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all var(--transition);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 2px 8px rgba(61, 139, 253, 0.3);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(61, 139, 253, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-active);
+}
+
+.btn-danger {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid rgba(240, 86, 106, 0.2);
+}
+
+.btn-danger:hover { background: rgba(240, 86, 106, 0.2); }
+
+.btn-icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--radius);
+  font-size: 18px;
+}
+
+/* ── Messages Log ── */
+.messages-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.messages-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.messages-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(42, 53, 69, 0.4);
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.messages-table tr:hover td { background: var(--bg-card-hover); }
+
+.dir-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dir-badge.in { background: var(--green-bg); color: var(--green); }
+.dir-badge.out { background: var(--accent-glow); color: var(--accent); }
+
+.msg-text {
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* ── Config ── */
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.config-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.config-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-input);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  word-break: break-all;
+}
+
+.config-value.success { border-color: var(--green); color: var(--green); }
+.config-value.warning { border-color: var(--yellow); color: var(--yellow); }
+
+/* ── QR Code ── */
+.qr-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 30px;
+}
+
+.qr-box {
+  width: 280px;
+  height: 280px;
+  background: white;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.qr-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.qr-box .placeholder {
+  color: #888;
+  font-size: 14px;
+  text-align: center;
+  padding: 20px;
+}
+
+.qr-status {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qr-status.connected { color: var(--green); }
+.qr-status.waiting { color: var(--yellow); }
+.qr-status.error { color: var(--red); }
+
+/* ── Jobs ── */
+.job-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.job-card .job-icon {
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--yellow-bg);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.job-card .job-info { flex: 1; }
+.job-card .job-info .name { font-weight: 600; font-size: 14px; }
+.job-card .job-info .details {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Empty State ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+.empty-state .title { font-size: 16px; font-weight: 600; color: var(--text-secondary); }
+.empty-state .desc { font-size: 13px; margin-top: 6px; max-width: 300px; }
+
+/* ── Loading ── */
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Section spacing ── */
+.section { margin-bottom: 24px; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .config-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .chat-bubble { max-width: 90%; }
+}
+
+/* ── House state ── */
+.house-state {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+/* ── Typing indicator ── */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  align-self: flex-start;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon">🏠</div>
+        <div>
+          <h1>Mordomo HA</h1>
+          <span class="version">v1.0.0</span>
+        </div>
+      </div>
+      <div class="status-pill" id="statusPill">
+        <span class="dot"></span>
+        <span id="statusText">A carregar...</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+        <span class="icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-tab="chat" onclick="switchTab('chat')">
+        <span class="icon">💬</span> Chat
+      </div>
+      <div class="nav-item" data-tab="messages" onclick="switchTab('messages')">
+        <span class="icon">📨</span> Mensagens
+        <span class="badge" id="msgBadge" style="display:none">0</span>
+      </div>
+      <div class="nav-item" data-tab="jobs" onclick="switchTab('jobs')">
+        <span class="icon">⏰</span> Tarefas
+      </div>
+      <div class="nav-item" data-tab="house" onclick="switchTab('house')">
+        <span class="icon">🏡</span> Casa
+      </div>
+      <div class="nav-item" data-tab="whatsapp" onclick="switchTab('whatsapp')">
+        <span class="icon">📱</span> WhatsApp
+      </div>
+      <div class="nav-item" data-tab="config" onclick="switchTab('config')">
+        <span class="icon">⚙️</span> Configuração
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      Mordomo HA © 2025<br>
+      <span id="uptimeText"></span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ═══ DASHBOARD ═══ -->
+    <div class="tab-view active" id="tab-dashboard">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <p>Visão geral do estado do Mordomo</p>
+      </div>
+      <div class="page-content">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card">
+            <div class="stat-icon blue">📩</div>
+            <div class="stat-info">
+              <div class="value" id="statMsgIn">--</div>
+              <div class="label">Mensagens Recebidas</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">📤</div>
+            <div class="stat-info">
+              <div class="value" id="statMsgOut">--</div>
+              <div class="label">Mensagens Enviadas</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon yellow">⚡</div>
+            <div class="stat-info">
+              <div class="value" id="statCommands">--</div>
+              <div class="label">Comandos Executados</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon purple">⚙️</div>
+            <div class="stat-info">
+              <div class="value" id="statAutomations">--</div>
+              <div class="label">Automações Criadas</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">⏰</div>
+            <div class="stat-info">
+              <div class="value" id="statJobs">--</div>
+              <div class="label">Tarefas Ativas</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue">👤</div>
+            <div class="stat-info">
+              <div class="value" id="statUsers">--</div>
+              <div class="label">Utilizadores</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <h3>Últimas Mensagens</h3>
+            <button class="btn btn-secondary" onclick="switchTab('messages')">Ver todas →</button>
+          </div>
+          <div class="card">
+            <table class="messages-table">
+              <thead>
+                <tr><th>Dir</th><th>Número</th><th>Mensagem</th><th>Hora</th></tr>
+              </thead>
+              <tbody id="recentMessagesBody"></tbody>
+            </table>
+            <div class="empty-state" id="dashEmptyMsg" style="display:none; padding:30px">
+              <div class="icon">📭</div>
+              <div class="title">Sem mensagens ainda</div>
+              <div class="desc">As mensagens do WhatsApp aparecerão aqui.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <h3>Informação do Sistema</h3>
+          </div>
+          <div class="config-grid">
+            <div class="config-item">
+              <div class="config-label">LLM Provider</div>
+              <div class="config-value" id="infoLLM">--</div>
+            </div>
+            <div class="config-item">
+              <div class="config-label">WhatsApp Gateway</div>
+              <div class="config-value" id="infoWA">--</div>
+            </div>
+            <div class="config-item">
+              <div class="config-label">Modelo</div>
+              <div class="config-value" id="infoModel">--</div>
+            </div>
+            <div class="config-item">
+              <div class="config-label">Webhook</div>
+              <div class="config-value" id="infoWebhook">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CHAT ═══ -->
+    <div class="tab-view" id="tab-chat">
+      <div class="page-header">
+        <h2>Chat com o Mordomo</h2>
+        <p>Conversa diretamente com o Mordomo a partir do painel</p>
+      </div>
+      <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+          <div class="empty-state" id="chatEmpty">
+            <div class="icon">🤖</div>
+            <div class="title">Olá! Sou o Mordomo.</div>
+            <div class="desc">Escreve algo para começar. Podes pedir-me para controlar a casa, ver estados, criar automações...</div>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <textarea id="chatInput" placeholder="Escreve uma mensagem..." rows="1"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+          <button class="btn btn-primary btn-icon" onclick="sendChat()" id="chatSendBtn">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MESSAGES ═══ -->
+    <div class="tab-view" id="tab-messages">
+      <div class="page-header">
+        <h2>Histórico de Mensagens</h2>
+        <p>Todas as mensagens trocadas via WhatsApp</p>
+      </div>
+      <div class="page-content">
+        <div class="section-header" style="margin-bottom:14px">
+          <div></div>
+          <button class="btn btn-secondary" onclick="loadMessages()">🔄 Atualizar</button>
+        </div>
+        <div class="card" style="max-height:calc(100vh - 220px); overflow-y:auto; padding:0">
+          <table class="messages-table">
+            <thead>
+              <tr><th>Direção</th><th>Número</th><th>Mensagem</th><th>Data/Hora</th></tr>
+            </thead>
+            <tbody id="allMessagesBody"></tbody>
+          </table>
+          <div class="empty-state" id="allEmptyMsg" style="display:none; padding:40px">
+            <div class="icon">📭</div>
+            <div class="title">Sem mensagens</div>
+            <div class="desc">As mensagens aparecerão aqui à medida que o Mordomo recebe e envia mensagens via WhatsApp.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ JOBS ═══ -->
+    <div class="tab-view" id="tab-jobs">
+      <div class="page-header">
+        <h2>Tarefas Agendadas</h2>
+        <p>Cron jobs criados pelo Mordomo</p>
+      </div>
+      <div class="page-content">
+        <div id="jobsList"></div>
+        <div class="empty-state" id="jobsEmpty" style="display:none">
+          <div class="icon">⏰</div>
+          <div class="title">Sem tarefas agendadas</div>
+          <div class="desc">Pede ao Mordomo via chat ou WhatsApp para agendar tarefas.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ HOUSE ═══ -->
+    <div class="tab-view" id="tab-house">
+      <div class="page-header">
+        <h2>Estado da Casa</h2>
+        <p>Visão geral de todas as divisões e dispositivos</p>
+      </div>
+      <div class="page-content">
+        <div class="section-header">
+          <div style="display:flex; gap:8px">
+            <button class="btn btn-secondary" onclick="loadHouse('summary')">📊 Resumo</button>
+            <button class="btn btn-secondary" onclick="loadHouse('full')">🏠 Completo</button>
+          </div>
+          <button class="btn btn-secondary" onclick="loadHouse()">🔄 Atualizar</button>
+        </div>
+        <div class="house-state" id="houseState">A carregar estado da casa...</div>
+      </div>
+    </div>
+
+    <!-- ═══ WHATSAPP ═══ -->
+    <div class="tab-view" id="tab-whatsapp">
+      <div class="page-header">
+        <h2>WhatsApp</h2>
+        <p>Ligação e QR Code para emparelhar o WhatsApp</p>
+      </div>
+      <div class="page-content">
+        <div class="card">
+          <div class="card-title">Estado da Ligação</div>
+          <div class="qr-section">
+            <div class="qr-status" id="qrStatus">
+              <span class="loading-spinner"></span> A verificar ligação...
+            </div>
+            <div class="qr-box" id="qrBox">
+              <div class="placeholder">A carregar QR Code...</div>
+            </div>
+            <button class="btn btn-primary" onclick="loadQrCode()">🔄 Atualizar QR Code</button>
+            <p style="font-size:12px; color:var(--text-muted); text-align:center; max-width:400px; margin-top:8px">
+              Abre o WhatsApp no telemóvel → Dispositivos conectados → Conectar dispositivo → Aponta a câmara para o QR code acima.
+            </p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <div class="card-title">Configuração da Gateway</div>
+          <div class="config-grid" id="waConfig" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CONFIG ═══ -->
+    <div class="tab-view" id="tab-config">
+      <div class="page-header">
+        <h2>Configuração</h2>
+        <p>Configuração do Mordomo HA</p>
+      </div>
+      <div class="page-content">
+        <div class="section">
+          <div class="card">
+            <div class="card-title">LLM (Inteligência Artificial)</div>
+            <div class="config-grid" style="margin-top:12px" id="llmConfigGrid"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="card">
+            <div class="card-title">WhatsApp</div>
+            <div class="config-grid" style="margin-top:12px" id="waConfigGrid"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="card">
+            <div class="card-title">Segurança</div>
+            <div class="config-grid" style="margin-top:12px" id="secConfigGrid"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="card">
+            <div class="card-title">System Prompt</div>
+            <div id="promptDisplay" class="house-state" style="margin-top:12px; max-height:300px"></div>
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <p style="font-size:12px; color:var(--text-muted)">
+            Para alterar estas configurações, vai a <strong>Definições → Dispositivos e Serviços → Mordomo HA → Configurar</strong>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Helpers ──
+const API = {
+  async get(url) {
+    const resp = await fetch(url, { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    return resp.json();
+  },
+  async post(url, data) {
+    const resp = await fetch(url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    return resp.json();
+  }
+};
+
+function fmtTime(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleString('pt-PT', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtTimeShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('pt-PT', { hour:'2-digit', minute:'2-digit' });
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Tab Navigation ──
+function switchTab(tab) {
+  document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + tab)?.classList.add('active');
+  document.querySelector(`.nav-item[data-tab="${tab}"]`)?.classList.add('active');
+
+  // Load data for specific tabs
+  if (tab === 'messages') loadMessages();
+  if (tab === 'jobs') loadJobs();
+  if (tab === 'house') loadHouse();
+  if (tab === 'whatsapp') loadQrCode();
+  if (tab === 'config') loadConfig();
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+  try {
+    const [stats, msgs] = await Promise.all([
+      API.get('/api/mordomo_ha/stats'),
+      API.get('/api/mordomo_ha/messages?limit=8'),
+    ]);
+
+    // Stats
+    document.getElementById('statMsgIn').textContent = stats.total_messages_in || 0;
+    document.getElementById('statMsgOut').textContent = stats.total_messages_out || 0;
+    document.getElementById('statCommands').textContent = stats.total_commands || 0;
+    document.getElementById('statAutomations').textContent = stats.total_automations_created || 0;
+    document.getElementById('statJobs').textContent = stats.active_jobs || 0;
+    document.getElementById('statUsers').textContent = (stats.unique_users || []).length;
+
+    // System info
+    document.getElementById('infoLLM').textContent = stats.llm_provider || '--';
+    document.getElementById('infoWA').textContent = stats.whatsapp_gateway || '--';
+    document.getElementById('infoModel').textContent = stats.llm_model || '--';
+    document.getElementById('infoWebhook').textContent = stats.webhook_id ? `/api/webhook/${stats.webhook_id}` : '--';
+
+    // Status pill
+    document.getElementById('statusText').textContent = 'Online';
+    document.getElementById('statusPill').querySelector('.dot').style.background = 'var(--green)';
+
+    // Uptime
+    if (stats.started_at) {
+      const start = new Date(stats.started_at);
+      const diff = Date.now() - start.getTime();
+      const hrs = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      document.getElementById('uptimeText').textContent = `Uptime: ${hrs}h ${mins}m`;
+    }
+
+    // Recent messages
+    renderRecentMessages(msgs.messages || []);
+
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+    document.getElementById('statusText').textContent = 'Erro de ligação';
+    document.getElementById('statusPill').querySelector('.dot').style.background = 'var(--red)';
+  }
+}
+
+function renderRecentMessages(messages) {
+  const tbody = document.getElementById('recentMessagesBody');
+  const empty = document.getElementById('dashEmptyMsg');
+
+  if (!messages.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = messages.slice(-8).reverse().map(m => `
+    <tr>
+      <td><span class="dir-badge ${m.direction}">${m.direction === 'in' ? '📩 IN' : '📤 OUT'}</span></td>
+      <td><span class="phone-tag">${escHtml(m.phone || '--')}</span></td>
+      <td><span class="msg-text">${escHtml(m.text || '')}</span></td>
+      <td style="color:var(--text-muted); white-space:nowrap">${fmtTime(m.timestamp)}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Chat ──
+let chatHistory = [];
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const btn = document.getElementById('chatSendBtn');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  // Add user bubble
+  addChatBubble('out', msg, 'Tu');
+  input.value = '';
+  input.style.height = 'auto';
+  btn.disabled = true;
+
+  // Show typing
+  const typingEl = document.createElement('div');
+  typingEl.className = 'typing-indicator';
+  typingEl.innerHTML = '<span></span><span></span><span></span>';
+  document.getElementById('chatMessages').appendChild(typingEl);
+  scrollChat();
+
+  try {
+    const data = await API.post('/api/mordomo_ha/chat', { message: msg });
+    typingEl.remove();
+
+    let response = data.response || 'Sem resposta.';
+    if (data.command_results?.length) {
+      response += '\n\n' + data.command_results.join('\n');
+    }
+    addChatBubble('in', response, 'Mordomo');
+
+  } catch (err) {
+    typingEl.remove();
+    addChatBubble('in', '❌ Erro ao comunicar com o Mordomo.', 'Sistema');
+  }
+
+  btn.disabled = false;
+}
+
+function addChatBubble(dir, text, sender) {
+  const empty = document.getElementById('chatEmpty');
+  if (empty) empty.style.display = 'none';
+
+  const container = document.getElementById('chatMessages');
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${dir}`;
+  bubble.innerHTML = `${escHtml(text)}<div class="meta">${sender} · ${fmtTimeShort(new Date().toISOString())}</div>`;
+  container.appendChild(bubble);
+  scrollChat();
+}
+
+function scrollChat() {
+  const c = document.getElementById('chatMessages');
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── Messages ──
+async function loadMessages() {
+  try {
+    const data = await API.get('/api/mordomo_ha/messages?limit=200');
+    const msgs = data.messages || [];
+    const tbody = document.getElementById('allMessagesBody');
+    const empty = document.getElementById('allEmptyMsg');
+
+    if (!msgs.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = msgs.reverse().map(m => `
+      <tr>
+        <td><span class="dir-badge ${m.direction}">${m.direction === 'in' ? '📩 Recebida' : '📤 Enviada'}</span></td>
+        <td><span class="phone-tag">${escHtml(m.phone || '--')}</span></td>
+        <td style="color:var(--text-secondary); max-width:500px; word-break:break-word">${escHtml(m.text || '')}</td>
+        <td style="color:var(--text-muted); white-space:nowrap">${fmtTime(m.timestamp)}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Messages load error:', err);
+  }
+}
+
+// ── Jobs ──
+async function loadJobs() {
+  try {
+    const data = await API.get('/api/mordomo_ha/jobs');
+    const jobs = data.jobs || [];
+    const list = document.getElementById('jobsList');
+    const empty = document.getElementById('jobsEmpty');
+
+    if (!jobs.length) {
+      list.innerHTML = '';
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+
+    list.innerHTML = jobs.map(j => `
+      <div class="job-card">
+        <div class="job-icon">⏰</div>
+        <div class="job-info">
+          <div class="name">${escHtml(j.description || 'Sem nome')}</div>
+          <div class="details">
+            Cron: ${escHtml(j.cron_expression)} · ID: ${escHtml(j.job_id)}
+            ${j.last_run ? ` · Última: ${fmtTime(j.last_run)}` : ''}
+          </div>
+        </div>
+        <button class="btn btn-danger" onclick="deleteJob('${escHtml(j.job_id)}')">🗑️</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Jobs load error:', err);
+  }
+}
+
+async function deleteJob(jobId) {
+  if (!confirm(`Remover tarefa ${jobId}?`)) return;
+  try {
+    await fetch('/api/mordomo_ha/jobs', {
+      method: 'DELETE', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobId }),
+    });
+    loadJobs();
+  } catch (err) { console.error(err); }
+}
+
+// ── House State ──
+async function loadHouse(detail = 'summary') {
+  const el = document.getElementById('houseState');
+  el.textContent = 'A carregar...';
+  try {
+    const data = await API.get(`/api/mordomo_ha/house?detail=${detail}`);
+    el.textContent = data.state || 'Sem dados.';
+  } catch (err) {
+    el.textContent = 'Erro ao carregar estado da casa.';
+  }
+}
+
+// ── QR Code ──
+async function loadQrCode() {
+  const statusEl = document.getElementById('qrStatus');
+  const boxEl = document.getElementById('qrBox');
+
+  statusEl.className = 'qr-status';
+  statusEl.innerHTML = '<span class="loading-spinner"></span> A verificar...';
+
+  try {
+    const data = await API.get('/api/mordomo_ha/qrcode');
+
+    if (data.status === 'connected') {
+      statusEl.className = 'qr-status connected';
+      statusEl.innerHTML = '✅ WhatsApp conectado!';
+      boxEl.innerHTML = '<div class="placeholder" style="color:#2dd4a0; font-size:48px">✅</div>';
+
+    } else if (data.status === 'qr_ready') {
+      statusEl.className = 'qr-status waiting';
+      statusEl.innerHTML = '📱 Lê o QR Code com o teu WhatsApp';
+
+      if (data.qr_base64) {
+        const src = data.qr_base64.startsWith('data:') ? data.qr_base64 : `data:image/png;base64,${data.qr_base64}`;
+        boxEl.innerHTML = `<img src="${src}" alt="QR Code">`;
+      } else if (data.qr_code) {
+        boxEl.innerHTML = `<div class="placeholder" style="font-family:'JetBrains Mono'; font-size:11px; word-break:break-all">${escHtml(data.qr_code)}</div>`;
+      }
+
+      // Auto-refresh QR every 20s
+      setTimeout(loadQrCode, 20000);
+
+    } else if (data.status === 'not_applicable') {
+      statusEl.className = 'qr-status';
+      statusEl.innerHTML = 'ℹ️ ' + (data.message || 'QR não aplicável');
+      boxEl.innerHTML = '<div class="placeholder">A Meta Cloud API não usa QR code.</div>';
+
+    } else {
+      statusEl.className = 'qr-status error';
+      statusEl.innerHTML = '❌ ' + (data.error || data.message || 'Erro');
+      boxEl.innerHTML = '<div class="placeholder">Erro ao obter QR code.</div>';
+    }
+
+    // WhatsApp config info
+    const waConfig = document.getElementById('waConfig');
+    if (waConfig) {
+      waConfig.innerHTML = `
+        <div class="config-item">
+          <div class="config-label">Gateway</div>
+          <div class="config-value">${escHtml(data.gateway || '--')}</div>
+        </div>
+        <div class="config-item">
+          <div class="config-label">Estado</div>
+          <div class="config-value ${data.status === 'connected' ? 'success' : 'warning'}">${escHtml(data.status || '--')}</div>
+        </div>
+      `;
+    }
+
+  } catch (err) {
+    statusEl.className = 'qr-status error';
+    statusEl.innerHTML = '❌ Erro de ligação ao servidor';
+    boxEl.innerHTML = '<div class="placeholder">Verifica se o Mordomo HA está a correr.</div>';
+  }
+}
+
+// ── Config ──
+async function loadConfig() {
+  try {
+    const cfg = await API.get('/api/mordomo_ha/config');
+
+    document.getElementById('llmConfigGrid').innerHTML = `
+      <div class="config-item">
+        <div class="config-label">Provedor</div>
+        <div class="config-value">${escHtml(cfg.llm_provider)}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">Modelo</div>
+        <div class="config-value">${escHtml(cfg.llm_model)}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">API Key</div>
+        <div class="config-value ${cfg.llm_api_key_set ? 'success' : 'warning'}">${cfg.llm_api_key_set ? '✅ Configurada' : '⚠️ Não configurada'}</div>
+      </div>
+    `;
+
+    document.getElementById('waConfigGrid').innerHTML = `
+      <div class="config-item">
+        <div class="config-label">Gateway</div>
+        <div class="config-value">${escHtml(cfg.whatsapp_gateway)}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">URL da API</div>
+        <div class="config-value">${escHtml(cfg.whatsapp_api_url)}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">API Key</div>
+        <div class="config-value ${cfg.whatsapp_api_key_set ? 'success' : 'warning'}">${cfg.whatsapp_api_key_set ? '✅ Configurada' : '⚠️ Não configurada'}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">Phone ID / Instância</div>
+        <div class="config-value">${escHtml(cfg.whatsapp_phone_id || '--')}</div>
+      </div>
+      <div class="config-item">
+        <div class="config-label">Webhook</div>
+        <div class="config-value">${escHtml(cfg.webhook_url)}</div>
+      </div>
+    `;
+
+    document.getElementById('secConfigGrid').innerHTML = `
+      <div class="config-item">
+        <div class="config-label">Números Autorizados</div>
+        <div class="config-value">${escHtml(cfg.allowed_numbers || 'Nenhum (todos bloqueados)')}</div>
+      </div>
+    `;
+
+    document.getElementById('promptDisplay').textContent = cfg.system_prompt || 'Prompt padrão';
+
+  } catch (err) {
+    console.error('Config load error:', err);
+  }
+}
+
+// ── Auto-resize textarea ──
+document.getElementById('chatInput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── Init ──
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>
