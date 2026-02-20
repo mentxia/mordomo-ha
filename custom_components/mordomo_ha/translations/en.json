@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mordomo HA - Choose LLM",
+        "description": "Select the LLM provider to use as the Mordomo's brain.",
+        "data": {
+          "llm_provider": "LLM Provider"
+        }
+      },
+      "llm_config": {
+        "title": "LLM Configuration - {provider}",
+        "description": "Configure access details for the selected LLM.",
+        "data": {
+          "llm_api_key": "API Key",
+          "llm_model": "Model",
+          "ollama_url": "Ollama URL",
+          "custom_api_url": "API URL (OpenAI-compatible)"
+        }
+      },
+      "whatsapp": {
+        "title": "WhatsApp Configuration",
+        "description": "Configure WhatsApp connection. You can use Meta's official API or a self-hosted gateway.",
+        "data": {
+          "whatsapp_gateway": "WhatsApp Gateway",
+          "whatsapp_api_url": "API URL",
+          "whatsapp_api_key": "API Key / Token",
+          "whatsapp_phone_id": "Phone ID / Instance Name"
+        }
+      },
+      "security": {
+        "title": "Security",
+        "description": "Define authorized phone numbers (comma-separated, international format without +). Example: {example}",
+        "data": {
+          "allowed_numbers": "Authorized numbers"
+        }
+      },
+      "prompt": {
+        "title": "Mordomo Customization",
+        "description": "Customize the Mordomo's behavior with a custom system prompt.",
+        "data": {
+          "system_prompt": "System Prompt"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Mordomo HA Options",
+        "data": {
+          "llm_model": "LLM Model",
+          "allowed_numbers": "Authorized numbers",
+          "system_prompt": "System Prompt"
+        }
+      }
+    }
+  }
+}
