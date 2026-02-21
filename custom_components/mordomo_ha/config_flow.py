@@ -115,8 +115,12 @@ class MordomoHAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            self._data.update(user_input)
-            return await self.async_step_security()
+            bridge_port = user_input.get("bridge_port", 3781)
+            if not (1024 <= int(bridge_port) <= 65535):
+                errors["bridge_port"] = "invalid_port"
+            else:
+                self._data.update(user_input)
+                return await self.async_step_security()
 
         return self.async_show_form(
             step_id="whatsapp",
@@ -125,6 +129,11 @@ class MordomoHAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_WHATSAPP_GATEWAY, default=WhatsAppGateway.BAILEYS_DIRECT
                     ): vol.In(GATEWAY_LABELS),
+                    # Port where the Baileys bridge listens (only used for baileys_direct)
+                    vol.Optional("bridge_port", default=3781): vol.All(
+                        vol.Coerce(int), vol.Range(min=1024, max=65535)
+                    ),
+                    # External gateways: leave blank when using Baileys direct
                     vol.Optional(CONF_WHATSAPP_API_URL, default=""): str,
                     vol.Optional(CONF_WHATSAPP_API_KEY, default=""): str,
                     vol.Optional(CONF_WHATSAPP_PHONE_ID, default=""): str,
@@ -132,7 +141,10 @@ class MordomoHAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
             description_placeholders={
-                "baileys_note": "Para Baileys Direto basta escolher a opção e deixar os campos em branco. O QR code aparece no Dashboard.",
+                "baileys_note": (
+                    "Para Baileys Direto, deixa API URL/Key/ID em branco - o QR code "
+                    "aparece no Dashboard. A porta padrao e 3781."
+                ),
             },
         )
 
