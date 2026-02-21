@@ -26,34 +26,82 @@ class CommandProcessor:
         """Extract JSON command blocks from LLM response text.
 
         Returns the clean text (without JSON blocks) and list of commands.
+
+        Supports:
+        - Fenced code blocks: ```json { ... } ```
+        - Bare fenced blocks:  ``` { ... } ```
+        - Inline JSON objects at any nesting depth
         """
         commands = []
         clean_text = text
+        seen_spans: list[tuple[int, int]] = []  # avoid double-processing
 
-        # Find JSON blocks in the response (```json ... ``` or inline {...})
-        # Pattern 1: fenced code blocks
-        fenced_pattern = r'```(?:json)?\s*(\{[^`]+?\})\s*```'
-        for match in re.finditer(fenced_pattern, text, re.DOTALL):
+        # -- Pattern 1: fenced code blocks (handles nested structures) --
+        fenced_pattern = re.compile(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```')
+        for match in fenced_pattern.finditer(text):
+            start, end = match.span()
+            if any(s <= start < e for s, e in seen_spans):
+                continue
             try:
                 cmd = json.loads(match.group(1))
-                if "action" in cmd:
+                if isinstance(cmd, dict) and "action" in cmd:
                     commands.append(cmd)
-                    clean_text = clean_text.replace(match.group(0), "")
+                    clean_text = clean_text.replace(match.group(0), "", 1)
+                    seen_spans.append((start, end))
             except json.JSONDecodeError:
                 pass
 
-        # Pattern 2: inline JSON objects with "action" key
-        inline_pattern = r'\{[^{}]*"action"\s*:\s*"[^"]*"[^{}]*\}'
-        for match in re.finditer(inline_pattern, text):
-            try:
-                cmd = json.loads(match.group(0))
-                if cmd not in commands:
-                    commands.append(cmd)
-                    clean_text = clean_text.replace(match.group(0), "")
-            except json.JSONDecodeError:
-                pass
+        # -- Pattern 2: balanced-brace JSON scanner (handles nested arrays/dicts) --
+        # Walk the text character by character to find top-level { ... } objects.
+        i = 0
+        while i < len(text):
+            if text[i] == '{':
+                # Check if this position is already captured
+                if any(s <= i < e for s, e in seen_spans):
+                    i += 1
+                    continue
+                # Try to extract a balanced JSON object from position i
+                depth = 0
+                in_string = False
+                escape_next = False
+                j = i
+                while j < len(text):
+                    ch = text[j]
+                    if escape_next:
+                        escape_next = False
+                    elif ch == '\\' and in_string:
+                        escape_next = True
+                    elif ch == '"':
+                        in_string = not in_string
+                    elif not in_string:
+                        if ch == '{':
+                            depth += 1
+                        elif ch == '}':
+                            depth -= 1
+                            if depth == 0:
+                                break
+                    j += 1
 
-        # Clean up extra whitespace
+                if depth == 0 and j < len(text):
+                    candidate = text[i:j + 1]
+                    try:
+                        cmd = json.loads(candidate)
+                        if isinstance(cmd, dict) and "action" in cmd:
+                            # Only add if not already captured from fenced block
+                            if cmd not in commands:
+                                commands.append(cmd)
+                                # Remove from clean_text
+                                clean_text = clean_text.replace(candidate, "", 1)
+                                seen_spans.append((i, j + 1))
+                    except json.JSONDecodeError:
+                        pass
+                    i = j + 1
+                else:
+                    i += 1
+            else:
+                i += 1
+
+        # Clean up extra whitespace left by removed blocks
         clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
 
         return clean_text, commands
@@ -85,7 +133,7 @@ class CommandProcessor:
                 elif action == "list_entities":
                     result = await self._list_entities(cmd)
                 else:
-                    result = f"Ação desconhecida: {action}"
+                    result = f"Acao desconhecida: {action}"
 
                 results.append(result)
             except Exception as err:
@@ -102,7 +150,7 @@ class CommandProcessor:
         data = cmd.get("data", {})
 
         if not domain or not service:
-            return "Erro: domínio e serviço são obrigatórios."
+            return "Erro: dominio e servico sao obrigatorios."
 
         service_data = {**data}
         if target:
@@ -113,29 +161,28 @@ class CommandProcessor:
                 domain, service, service_data, blocking=True
             )
             entity = target.get("entity_id", "desconhecido")
-            return f"✅ Executado: {domain}.{service} em {entity}"
+            return f"OK: {domain}.{service} em {entity}"
         except Exception as err:
-            return f"❌ Erro ao executar {domain}.{service}: {err}"
+            return f"Erro ao executar {domain}.{service}: {err}"
 
     async def _get_state(self, cmd: dict) -> str:
         """Get state of an entity."""
         entity_id = cmd.get("entity_id", "")
         if not entity_id:
-            return "Erro: entity_id é obrigatório."
+            return "Erro: entity_id e obrigatorio."
 
         state = self.hass.states.get(entity_id)
         if state is None:
-            return f"Entidade '{entity_id}' não encontrada."
+            return f"Entidade '{entity_id}' nao encontrada."
 
         attrs = dict(state.attributes)
         friendly_name = attrs.pop("friendly_name", entity_id)
         unit = attrs.pop("unit_of_measurement", "")
 
-        result = f"📊 {friendly_name}: {state.state}"
+        result = f"{friendly_name}: {state.state}"
         if unit:
             result += f" {unit}"
 
-        # Add relevant attributes
         relevant_attrs = {
             k: v for k, v in attrs.items()
             if k in ("temperature", "humidity", "brightness", "color_temp",
@@ -162,111 +209,107 @@ class CommandProcessor:
                 if state:
                     name = state.attributes.get("friendly_name", eid)
                     unit = state.attributes.get("unit_of_measurement", "")
-                    results.append(f"  • {name}: {state.state} {unit}".strip())
+                    results.append(f"  - {name}: {state.state} {unit}".strip())
         elif domain_filter:
             all_states = self.hass.states.async_all(domain_filter)
-            for state in all_states[:20]:  # Limit to 20
+            for state in all_states[:20]:
                 name = state.attributes.get("friendly_name", state.entity_id)
                 unit = state.attributes.get("unit_of_measurement", "")
-                results.append(f"  • {name}: {state.state} {unit}".strip())
+                results.append(f"  - {name}: {state.state} {unit}".strip())
 
         if not results:
             return "Nenhuma entidade encontrada."
 
-        return "📊 Estados:\n" + "\n".join(results)
+        return "Estados:\n" + "\n".join(results)
 
     async def _create_automation(self, cmd: dict) -> str:
-        """Create a Home Assistant automation."""
+        """Create a Home Assistant automation.
+
+        Accepts the automation's action steps under either "automation_action"
+        (preferred, avoids dict-key collision with the command "action") or
+        the legacy "action" key when the LLM sends raw YAML-style JSON.
+        """
+        import uuid
+        import os
+
         alias = cmd.get("alias", "Mordomo Automation")
         trigger = cmd.get("trigger", [])
         condition = cmd.get("condition", [])
-        action = cmd.get("action", [])
-        description = cmd.get("description", f"Criada pelo Mordomo HA")
+        # Support both key names: "automation_action" (service) and "action" is
+        # already consumed as the command verb, so LLM-generated payloads that
+        # contain the HA action list should use "automation_action".
+        # As a fallback, if the value of "action" is a list it's the HA actions.
+        action_value = cmd.get("automation_action") or cmd.get("ha_action", [])
+        if not action_value and isinstance(cmd.get("action"), list):
+            action_value = cmd["action"]
+        description_text = cmd.get("description", "Criada pelo Mordomo HA")
         mode = cmd.get("mode", "single")
 
-        if not trigger or not action:
-            return "Erro: trigger e action são obrigatórios para criar automação."
+        if not trigger or not action_value:
+            return "Erro: trigger e automation_action sao obrigatorios para criar uma automacao."
 
         automation_config = {
             "alias": alias,
-            "description": description,
+            "description": description_text,
             "trigger": trigger,
             "condition": condition,
-            "action": action,
+            "action": action_value,
             "mode": mode,
         }
 
         try:
-            # Use the automation component to create
-            await self.hass.services.async_call(
-                "automation",
-                "reload",
-                blocking=True,
-            )
-
-            # Write automation to automations.yaml via config entries
-            # We'll fire an event that can be picked up by a script
-            self.hass.bus.async_fire(
-                "mordomo_ha_create_automation",
-                automation_config,
-            )
-
-            # Also try to create via the config API
             config_result = await self._write_automation_config(automation_config)
-
-            return f"✅ Automação '{alias}' criada com sucesso!\n{config_result}"
+            return f"Automacao '{alias}' criada com sucesso!\n{config_result}"
         except Exception as err:
-            return f"❌ Erro ao criar automação: {err}"
+            _LOGGER.error("Failed to create automation: %s", err)
+            return f"Erro ao criar automacao: {err}"
 
     async def _write_automation_config(self, config: dict) -> str:
-        """Write automation to HA config via websocket API."""
+        """Write automation to automations.yaml and reload.
+
+        File I/O is offloaded to the executor to avoid blocking the event loop.
+        """
         import uuid
 
-        try:
-            # Create via the automation config store
-            automation_id = str(uuid.uuid4()).replace("-", "")[:12]
+        automation_id = str(uuid.uuid4()).replace("-", "")[:12]
+        config_path = self.hass.config.path("automations.yaml")
 
-            await self.hass.services.async_call(
-                "automation",
-                "reload",
-                blocking=True,
-            )
-
-            # Store the automation config
-            config_path = self.hass.config.path("automations.yaml")
-
+        def _sync_write() -> str:
+            """Blocking file operations - runs in executor."""
             import yaml
             import os
 
-            # Read existing automations
-            existing = []
+            existing: list = []
             if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    content = yaml.safe_load(f) or []
+                with open(config_path, "r", encoding="utf-8") as fh:
+                    content = yaml.safe_load(fh) or []
                     if isinstance(content, list):
                         existing = content
 
-            # Add new automation
-            new_automation = {
-                "id": automation_id,
-                **config,
-            }
+            new_automation = {"id": automation_id, **config}
             existing.append(new_automation)
 
-            # Write back
-            with open(config_path, "w") as f:
-                yaml.dump(existing, f, default_flow_style=False, allow_unicode=True)
+            with open(config_path, "w", encoding="utf-8") as fh:
+                yaml.dump(existing, fh, default_flow_style=False, allow_unicode=True)
 
-            # Reload automations
+            return automation_id
+
+        try:
+            aid = await self.hass.async_add_executor_job(_sync_write)
+        except Exception as err:
+            _LOGGER.error("Failed to write automation config: %s", err)
+            return "Nota: nao foi possivel escrever o ficheiro de automacoes."
+
+        # Reload automations AFTER writing (not before)
+        try:
             await self.hass.services.async_call(
                 "automation", "reload", blocking=True
             )
-
-            return f"ID: {automation_id}"
-
         except Exception as err:
-            _LOGGER.error("Failed to write automation config: %s", err)
-            return f"Nota: automação registada mas pode precisar de reload manual."
+            _LOGGER.warning("Automation reload failed: %s", err)
+            return f"ID: {aid} (reload manual necessario)"
+
+        return f"ID: {aid}"
 
     async def _schedule_job(self, cmd: dict) -> str:
         """Schedule a cron job (delegates to scheduler component)."""
@@ -275,9 +318,8 @@ class CommandProcessor:
         commands = cmd.get("commands", [])
 
         if not cron_expr:
-            return "Erro: expressão cron é obrigatória."
+            return "Erro: expressao cron e obrigatoria."
 
-        # Fire event for the scheduler to pick up
         self.hass.bus.async_fire(
             "mordomo_ha_schedule_job",
             {
@@ -287,20 +329,20 @@ class CommandProcessor:
             },
         )
 
-        return f"⏰ Tarefa agendada: '{description}' com cron '{cron_expr}'"
+        return f"Tarefa agendada: '{description}' com cron '{cron_expr}'"
 
     async def _remove_job(self, cmd: dict) -> str:
         """Remove a scheduled job."""
         job_id = cmd.get("job_id", "")
         if not job_id:
-            return "Erro: job_id é obrigatório."
+            return "Erro: job_id e obrigatorio."
 
         self.hass.bus.async_fire(
             "mordomo_ha_remove_job",
             {"job_id": job_id},
         )
 
-        return f"🗑️ Tarefa '{job_id}' removida."
+        return f"Tarefa '{job_id}' removida."
 
     async def _list_entities(self, cmd: dict) -> str:
         """List entities, optionally filtered."""
@@ -320,16 +362,16 @@ class CommandProcessor:
             entities.append(entry.entity_id)
 
         if not entities:
-            return "Nenhuma entidade encontrada com esses critérios."
+            return "Nenhuma entidade encontrada com esses criterios."
 
-        entities = entities[:30]  # Limit
-        return "📋 Entidades:\n" + "\n".join(f"  • {e}" for e in sorted(entities))
+        entities = entities[:30]
+        return "Entidades:\n" + "\n".join(f"  - {e}" for e in sorted(entities))
 
     async def _get_area(self, cmd: dict) -> str:
         """Get detailed info about a specific area/room."""
         area_name = cmd.get("area", "")
         if not area_name:
-            return "Erro: nome da divisão é obrigatório."
+            return "Erro: nome da divisao e obrigatorio."
         return await self.home_awareness.get_area_context(area_name)
 
     async def _get_areas(self) -> str:
