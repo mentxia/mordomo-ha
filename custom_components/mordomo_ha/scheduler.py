@@ -81,6 +81,7 @@ class MordomoScheduler:
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._jobs: dict[str, CronJob] = {}
         self._command_processor = None
+        self._unsub_listeners: list[CALLBACK_TYPE] = []
 
     def set_command_processor(self, processor):
         """Set the command processor for executing jobs."""
@@ -101,12 +102,16 @@ class MordomoScheduler:
 
         _LOGGER.info("Loaded %d scheduled jobs", len(self._jobs))
 
-        # Listen for events
-        self.hass.bus.async_listen(
-            "mordomo_ha_schedule_job", self._handle_schedule_event
+        # Listen for events - store removal callbacks for clean unload
+        self._unsub_listeners.append(
+            self.hass.bus.async_listen(
+                "mordomo_ha_schedule_job", self._handle_schedule_event
+            )
         )
-        self.hass.bus.async_listen(
-            "mordomo_ha_remove_job", self._handle_remove_event
+        self._unsub_listeners.append(
+            self.hass.bus.async_listen(
+                "mordomo_ha_remove_job", self._handle_remove_event
+            )
         )
 
     async def async_save(self):
@@ -115,6 +120,19 @@ class MordomoScheduler:
             "jobs": [job.to_dict() for job in self._jobs.values()],
         }
         await self._store.async_save(data)
+
+    async def async_unload(self):
+        """Unload scheduler: cancel all timers and event listeners."""
+        # Cancel event listeners
+        for unsub in self._unsub_listeners:
+            unsub()
+        self._unsub_listeners.clear()
+
+        # Cancel scheduled timers
+        for job in self._jobs.values():
+            if job._cancel_callback:
+                job._cancel_callback()
+                job._cancel_callback = None
 
     async def add_job(
         self,
@@ -197,7 +215,6 @@ class MordomoScheduler:
 
     async def _schedule_simple_fallback(self, job: CronJob):
         """Simple fallback scheduler when croniter is not available."""
-        # Parse simple cron patterns manually
         parts = job.cron_expression.split()
         if len(parts) != 5:
             _LOGGER.error("Invalid cron expression: %s", job.cron_expression)
@@ -227,7 +244,6 @@ class MordomoScheduler:
                 results = await self._command_processor.execute_commands(job.commands)
                 _LOGGER.info("Job '%s' results: %s", job.job_id, results)
 
-                # Fire event with results
                 self.hass.bus.async_fire(
                     "mordomo_ha_job_completed",
                     {
