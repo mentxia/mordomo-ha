@@ -3,16 +3,12 @@
   "name": "Mordomo HA - WhatsApp Smart Butler",
   "codeowners": ["@joao"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["webhook", "frontend", "http"],
   "documentation": "https://github.com/joao/mordomo-ha",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/joao/mordomo-ha/issues",
   "requirements": [
-    "openai>=1.12.0",
-    "anthropic>=0.18.0",
-    "httpx>=0.27.0",
-    "croniter>=2.0.0",
-    "jinja2>=3.1.0"
+    "croniter>=2.0.0"
   ],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
