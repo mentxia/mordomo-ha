@@ -69,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         llm_api_url = config.get("custom_api_url", "")
 
     # Get WhatsApp settings
-    wa_gateway_type = config.get("whatsapp_gateway", "evolution_api")
+    wa_gateway_type = config.get("whatsapp_gateway", "baileys_direct")
     wa_api_url = config.get(CONF_WHATSAPP_API_URL, "")
     wa_api_key = config.get(CONF_WHATSAPP_API_KEY, "")
     wa_phone_id = config.get(CONF_WHATSAPP_PHONE_ID, "")
@@ -223,10 +223,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if webhook_id:
         webhook.async_unregister(hass, webhook_id)
 
-    # Save scheduler state
+    # Save + unload scheduler (cancels timers and event listeners)
     scheduler = data.get("scheduler")
     if scheduler:
         await scheduler.async_save()
+        await scheduler.async_unload()
 
     return True
 
@@ -278,7 +279,7 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
             _LOGGER.warning("Unauthorized message from %s", sender)
             await wa.send_message(
                 sender,
-                "⛔ Não tens autorização para falar comigo. Contacta o administrador.",
+                "Nao tens autorizacao para falar comigo. Contacta o administrador.",
             )
             return
 
@@ -291,45 +292,43 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
         # Special commands
         if message.strip().lower() in ("/reset", "/limpar", "/clear"):
             llm.clear_history(sender)
-            await wa.send_message(sender, "🧹 Histórico de conversa limpo!")
+            await wa.send_message(sender, "Historico de conversa limpo!")
             return
 
         if message.strip().lower() in ("/jobs", "/tarefas"):
             scheduler = mordomo["scheduler"]
             jobs = scheduler.get_jobs()
             if not jobs:
-                await wa.send_message(sender, "📋 Nenhuma tarefa agendada.")
+                await wa.send_message(sender, "Nenhuma tarefa agendada.")
             else:
-                text = "📋 *Tarefas agendadas:*\n\n"
+                text = "Tarefas agendadas:\n\n"
                 for job in jobs:
-                    status = "✅" if job.enabled else "⏸️"
+                    status = "OK" if job.enabled else "pausado"
                     next_r = job.next_run.strftime("%d/%m %H:%M") if job.next_run else "N/A"
-                    text += f"{status} *{job.description}*\n"
+                    text += f"{status} {job.description}\n"
                     text += f"   ID: {job.job_id}\n"
                     text += f"   Cron: {job.cron_expression}\n"
-                    text += f"   Próxima: {next_r}\n\n"
+                    text += f"   Proxima: {next_r}\n\n"
                 await wa.send_message(sender, text)
             return
 
         if message.strip().lower() in ("/help", "/ajuda"):
             help_text = (
-                "🤖 *Mordomo HA - Comandos:*\n\n"
+                "Mordomo HA - Comandos:\n\n"
                 "Podes falar comigo normalmente! Alguns comandos especiais:\n\n"
                 "/ajuda - Esta mensagem\n"
-                "/limpar - Limpar histórico de conversa\n"
+                "/limpar - Limpar historico de conversa\n"
                 "/tarefas - Ver tarefas agendadas\n"
-                "/estado - Ver resumo rápido da casa\n"
-                "/casa - Ver estado completo por divisão\n"
-                "/divisões - Listar todas as divisões\n"
-                "/divisão [nome] - Ver detalhe de uma divisão\n\n"
-                "*Exemplos de pedidos:*\n"
-                '• "Liga a luz da sala"\n'
-                '• "Qual a temperatura do quarto?"\n'
-                '• "O que está ligado na cozinha?"\n'
-                '• "Cria uma automação para ligar a luz às 19h"\n'
-                '• "Agenda para todos os dias às 8h abrir os estores"\n'
-                '• "Que luzes estão ligadas?"\n'
-                '• "Mostra-me o estado da sala"\n'
+                "/estado - Ver resumo rapido da casa\n"
+                "/casa - Ver estado completo por divisao\n"
+                "/divisoes - Listar todas as divisoes\n"
+                "/divisao [nome] - Ver detalhe de uma divisao\n\n"
+                "Exemplos de pedidos:\n"
+                '- "Liga a luz da sala"\n'
+                '- "Qual a temperatura do quarto?"\n'
+                '- "O que esta ligado na cozinha?"\n'
+                '- "Cria uma automacao para ligar a luz as 19h"\n'
+                '- "Agenda para todos os dias as 8h abrir os estores"\n'
             )
             await wa.send_message(sender, help_text)
             return
@@ -338,12 +337,11 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
             context = await cmd_processor.home_awareness.get_summary_context()
             if len(context) > 3000:
                 context = context[:3000] + "\n... (truncado)"
-            await wa.send_message(sender, f"🏠 *Resumo da Casa:*\n{context}")
+            await wa.send_message(sender, f"Resumo da Casa:\n{context}")
             return
 
         if message.strip().lower() in ("/casa", "/house", "/full"):
             context = await cmd_processor.home_awareness.get_full_house_context()
-            # Split long messages
             if len(context) > 4000:
                 parts = []
                 current = ""
@@ -356,24 +354,24 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
                 if current:
                     parts.append(current)
                 for i, part in enumerate(parts):
-                    header = f"🏠 *Casa ({i+1}/{len(parts)}):*\n" if len(parts) > 1 else "🏠 *Casa:*\n"
+                    header = f"Casa ({i+1}/{len(parts)}):\n" if len(parts) > 1 else "Casa:\n"
                     await wa.send_message(sender, header + part)
             else:
-                await wa.send_message(sender, f"🏠 *Estado da Casa:*\n{context}")
+                await wa.send_message(sender, f"Estado da Casa:\n{context}")
             return
 
-        if message.strip().lower() in ("/divisões", "/divisoes", "/areas", "/rooms"):
+        if message.strip().lower() in ("/divisoes", "/divisao", "/areas", "/rooms"):
             areas_list = await cmd_processor.home_awareness.get_areas_list()
             await wa.send_message(sender, areas_list)
             return
 
-        if message.strip().lower().startswith(("/divisão ", "/divisao ", "/area ", "/room ")):
+        if message.strip().lower().startswith(("/divisao ", "/area ", "/room ")):
             area_name = message.strip().split(" ", 1)[1] if " " in message.strip() else ""
             if area_name:
                 area_context = await cmd_processor.home_awareness.get_area_context(area_name)
                 await wa.send_message(sender, area_context)
             else:
-                await wa.send_message(sender, "Indica o nome da divisão. Ex: /divisão Sala")
+                await wa.send_message(sender, "Indica o nome da divisao. Ex: /divisao Sala")
             return
 
         # Get HA context for the LLM
@@ -395,7 +393,6 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
         if commands:
             _LOGGER.info("Executing %d commands from LLM response", len(commands))
 
-            # Fire command event
             hass.bus.async_fire(
                 EVENT_MORDOMO_COMMAND,
                 {"from": sender, "commands": commands},
@@ -403,12 +400,10 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
 
             results = await cmd_processor.execute_commands(commands)
 
-            # Dashboard command logging
             if dashboard:
                 for cmd in commands:
                     dashboard.log_command(cmd.get("action", ""))
 
-            # Append results to response
             if results:
                 result_text = "\n".join(results)
                 if clean_response:
@@ -418,15 +413,11 @@ def _create_webhook_handler(hass: HomeAssistant, entry_id: str):
 
         # Send response via WhatsApp
         if clean_response:
-            # Dashboard logging
             if dashboard:
                 dashboard.log_outgoing(sender, clean_response)
-                # Periodic save
                 await dashboard.async_save()
 
-            # WhatsApp has a ~4096 char limit
             if len(clean_response) > 4000:
-                # Split into multiple messages
                 parts = [
                     clean_response[i:i + 4000]
                     for i in range(0, len(clean_response), 4000)
@@ -443,38 +434,33 @@ async def _register_services(hass: HomeAssistant, entry_id: str):
     """Register Mordomo HA services."""
 
     async def handle_send_message(call: ServiceCall):
-        """Handle send_message service call."""
         mordomo = hass.data.get(DOMAIN, {}).get(entry_id)
         if not mordomo:
             return
-
         phone = call.data.get("phone", "")
         message = call.data.get("message", "")
-
         if phone and message:
             await mordomo["whatsapp"].send_message(phone, message)
 
     async def handle_create_automation(call: ServiceCall):
-        """Handle create_automation service call."""
         mordomo = hass.data.get(DOMAIN, {}).get(entry_id)
         if not mordomo:
             return
-
+        # NOTE: "action" key cannot appear twice in a dict literal.
+        # The automation action steps go in "automation_action".
         cmd = {
             "action": "create_automation",
             "alias": call.data.get("alias", "Mordomo Automation"),
             "trigger": call.data.get("trigger", []),
             "condition": call.data.get("condition", []),
-            "action": call.data.get("automation_action", []),
+            "automation_action": call.data.get("automation_action", []),
         }
         await mordomo["command_processor"].execute_commands([cmd])
 
     async def handle_schedule_job(call: ServiceCall):
-        """Handle schedule_job service call."""
         mordomo = hass.data.get(DOMAIN, {}).get(entry_id)
         if not mordomo:
             return
-
         await mordomo["scheduler"].add_job(
             cron_expression=call.data.get("cron", ""),
             description=call.data.get("description", ""),
@@ -483,26 +469,21 @@ async def _register_services(hass: HomeAssistant, entry_id: str):
         )
 
     async def handle_remove_job(call: ServiceCall):
-        """Handle remove_job service call."""
         mordomo = hass.data.get(DOMAIN, {}).get(entry_id)
         if not mordomo:
             return
-
         await mordomo["scheduler"].remove_job(call.data.get("job_id", ""))
 
     async def handle_list_jobs(call: ServiceCall):
-        """Handle list_jobs service call."""
         mordomo = hass.data.get(DOMAIN, {}).get(entry_id)
         if not mordomo:
             return
-
         jobs = mordomo["scheduler"].get_jobs()
         hass.bus.async_fire(
             "mordomo_ha_jobs_list",
             {"jobs": [j.to_dict() for j in jobs]},
         )
 
-    # Register all services
     hass.services.async_register(DOMAIN, SERVICE_SEND_MESSAGE, handle_send_message)
     hass.services.async_register(DOMAIN, SERVICE_CREATE_AUTOMATION, handle_create_automation)
     hass.services.async_register(DOMAIN, SERVICE_SCHEDULE_JOB, handle_schedule_job)
