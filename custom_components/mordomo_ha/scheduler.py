@@ -186,9 +186,10 @@ class MordomoScheduler:
             cron = croniter(job.cron_expression, now)
             next_time = cron.get_next(datetime)
 
-            # Convert to HA timezone-aware
+            # Attach the local timezone without converting (croniter already
+            # computed in local time because 'now' was tz-aware local).
             if next_time.tzinfo is None:
-                next_time = dt_util.as_local(next_time)
+                next_time = next_time.replace(tzinfo=dt_util.now().tzinfo)
 
             job.next_run = next_time
 

@@ -74,14 +74,14 @@ class OpenAIProvider(BaseLLMProvider):
         ha_context: str = "",
     ) -> str:
         """Send message via OpenAI-compatible API."""
-        self.add_to_history(phone, "user", message)
-
         full_system = system_prompt
         if ha_context:
             full_system += f"\n\n## Estado atual da casa:\n{ha_context}"
 
+        # Build messages with current history + new user message
         messages = [{"role": "system", "content": full_system}]
         messages.extend(self.get_history(phone))
+        messages.append({"role": "user", "content": message})
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -109,7 +109,15 @@ class OpenAIProvider(BaseLLMProvider):
                         return f"Desculpa, tive um erro ao processar: {resp.status}"
 
                     data = await resp.json()
-                    response = data["choices"][0]["message"]["content"]
+                    choices = data.get("choices", [])
+                    if not choices:
+                        _LOGGER.error("LLM returned empty choices: %s", data)
+                        return "Desculpa, recebi uma resposta vazia do LLM."
+                    response = choices[0].get("message", {}).get("content", "")
+                    if not response:
+                        return "Desculpa, recebi uma resposta vazia do LLM."
+                    # Only add to history after successful response
+                    self.add_to_history(phone, "user", message)
                     self.add_to_history(phone, "assistant", response)
                     return response
 
@@ -133,11 +141,13 @@ class AnthropicProvider(BaseLLMProvider):
         ha_context: str = "",
     ) -> str:
         """Send message via Anthropic API."""
-        self.add_to_history(phone, "user", message)
-
         full_system = system_prompt
         if ha_context:
             full_system += f"\n\n## Estado atual da casa:\n{ha_context}"
+
+        # Build messages with current history + new user message
+        chat_messages = list(self.get_history(phone))
+        chat_messages.append({"role": "user", "content": message})
 
         headers = {
             "x-api-key": self.api_key,
@@ -148,7 +158,7 @@ class AnthropicProvider(BaseLLMProvider):
         payload = {
             "model": self.model,
             "system": full_system,
-            "messages": self.get_history(phone),
+            "messages": chat_messages,
             "max_tokens": 2000,
             "temperature": 0.7,
         }
@@ -167,7 +177,15 @@ class AnthropicProvider(BaseLLMProvider):
                         return f"Desculpa, tive um erro ao processar: {resp.status}"
 
                     data = await resp.json()
-                    response = data["content"][0]["text"]
+                    content = data.get("content", [])
+                    if not content:
+                        _LOGGER.error("Anthropic returned empty content: %s", data)
+                        return "Desculpa, recebi uma resposta vazia do LLM."
+                    response = content[0].get("text", "")
+                    if not response:
+                        return "Desculpa, recebi uma resposta vazia do LLM."
+                    # Only add to history after successful response
+                    self.add_to_history(phone, "user", message)
                     self.add_to_history(phone, "assistant", response)
                     return response
 
@@ -191,14 +209,14 @@ class OllamaProvider(BaseLLMProvider):
         ha_context: str = "",
     ) -> str:
         """Send message via Ollama API."""
-        self.add_to_history(phone, "user", message)
-
         full_system = system_prompt
         if ha_context:
             full_system += f"\n\n## Estado atual da casa:\n{ha_context}"
 
+        # Build messages with current history + new user message
         messages = [{"role": "system", "content": full_system}]
         messages.extend(self.get_history(phone))
+        messages.append({"role": "user", "content": message})
 
         payload = {
             "model": self.model,
@@ -219,7 +237,13 @@ class OllamaProvider(BaseLLMProvider):
                         return f"Desculpa, tive um erro ao processar: {resp.status}"
 
                     data = await resp.json()
-                    response = data["message"]["content"]
+                    msg_data = data.get("message", {})
+                    response = msg_data.get("content", "") if isinstance(msg_data, dict) else ""
+                    if not response:
+                        _LOGGER.error("Ollama returned empty content: %s", data)
+                        return "Desculpa, recebi uma resposta vazia do LLM."
+                    # Only add to history after successful response
+                    self.add_to_history(phone, "user", message)
                     self.add_to_history(phone, "assistant", response)
                     return response
 

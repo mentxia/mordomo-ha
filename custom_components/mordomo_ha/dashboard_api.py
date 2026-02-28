@@ -33,6 +33,7 @@ class DashboardData:
         self.hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.messages: deque[dict] = deque(maxlen=MAX_MESSAGES)
+        self._msg_counter = 0
         self.stats = {
             "total_messages_in": 0,
             "total_messages_out": 0,
@@ -77,8 +78,9 @@ class DashboardData:
 
     def log_incoming(self, sender: str, message: str):
         """Log an incoming message."""
+        self._msg_counter += 1
         self.messages.append({
-            "id": len(self.messages),
+            "id": self._msg_counter,
             "direction": "in",
             "phone": sender,
             "text": message,
@@ -90,8 +92,9 @@ class DashboardData:
 
     def log_outgoing(self, recipient: str, message: str):
         """Log an outgoing message."""
+        self._msg_counter += 1
         self.messages.append({
-            "id": len(self.messages),
+            "id": self._msg_counter,
             "direction": "out",
             "phone": recipient,
             "text": message,
@@ -245,7 +248,10 @@ class MordomoApiMessages(HomeAssistantView):
         if not dashboard:
             return self.json({"error": "Dashboard not initialized"}, status_code=500)
 
-        limit = int(request.query.get("limit", 100))
+        try:
+            limit = int(request.query.get("limit", 100))
+        except (ValueError, TypeError):
+            limit = 100
         phone = request.query.get("phone", "")
         messages = dashboard.get_messages(limit=limit, phone=phone)
         return self.json({"messages": messages})

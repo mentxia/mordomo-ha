@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import subprocess
 from enum import Enum
 from typing import Any
 
@@ -36,7 +35,7 @@ GATEWAY_LABELS = {
 
 class BaileysDirectGateway:
     """Direct WhatsApp Web connection via Baileys (same as OpenClaw).
-    
+
     Runs a Node.js subprocess with Baileys. Scan QR code and go.
     No external gateway needed.
     """
@@ -48,33 +47,52 @@ class BaileysDirectGateway:
         self.auth_dir = auth_dir
         self.webhook_url = webhook_url
         self.ha_token = ha_token
-        self._process: subprocess.Popen | None = None
+        self._process: asyncio.subprocess.Process | None = None
         self._running = False
+        self._session: aiohttp.ClientSession | None = None
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create a reusable aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30)
+            )
+        return self._session
 
     async def start_bridge(self) -> bool:
-        """Start the Baileys bridge subprocess."""
+        """Start the Baileys bridge subprocess (non-blocking)."""
         bridge_dir = os.path.join(os.path.dirname(__file__), "bridge")
         bridge_script = os.path.join(bridge_dir, "baileys_bridge.js")
         node_modules = os.path.join(bridge_dir, "node_modules")
 
-        # Check Node.js
+        # Check Node.js (non-blocking)
         try:
-            r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
-            if r.returncode != 0:
+            proc = await asyncio.create_subprocess_exec(
+                "node", "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode != 0:
                 _LOGGER.error("Node.js not found")
                 return False
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, asyncio.TimeoutError):
             _LOGGER.error("Node.js not found. Install Node.js >= 18 to use Baileys.")
             return False
 
-        # npm install if needed
+        # npm install if needed (non-blocking)
         if not os.path.exists(node_modules):
             _LOGGER.info("Installing Baileys bridge dependencies...")
             try:
-                p = subprocess.run(["npm", "install", "--production"], cwd=bridge_dir,
-                                   capture_output=True, text=True, timeout=120)
-                if p.returncode != 0:
-                    _LOGGER.error("npm install failed: %s", p.stderr)
+                proc = await asyncio.create_subprocess_exec(
+                    "npm", "install", "--production",
+                    cwd=bridge_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+                if proc.returncode != 0:
+                    _LOGGER.error("npm install failed: %s", stderr.decode())
                     return False
             except Exception as err:
                 _LOGGER.error("npm install error: %s", err)
@@ -94,15 +112,19 @@ class BaileysDirectGateway:
         })
 
         try:
-            self._process = subprocess.Popen(
-                ["node", bridge_script], cwd=bridge_dir, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            self._process = await asyncio.create_subprocess_exec(
+                "node", bridge_script,
+                cwd=bridge_dir,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
             self._running = True
-            asyncio.get_event_loop().run_in_executor(None, self._read_logs)
+            # Start log reading as a background task
+            asyncio.get_running_loop().create_task(self._read_logs_async())
             await asyncio.sleep(3)
 
-            if self._process.poll() is not None:
+            if self._process.returncode is not None:
                 _LOGGER.error("Bridge exited immediately")
                 return False
 
@@ -112,12 +134,14 @@ class BaileysDirectGateway:
             _LOGGER.error("Bridge start failed: %s", err)
             return False
 
-    def _read_logs(self):
+    async def _read_logs_async(self):
+        """Read bridge logs asynchronously."""
         if not self._process or not self._process.stdout:
             return
         try:
-            for line in iter(self._process.stdout.readline, b''):
-                if not self._running:
+            while self._running:
+                line = await self._process.stdout.readline()
+                if not line:
                     break
                 text = line.decode('utf-8', errors='replace').strip()
                 if text:
@@ -126,68 +150,77 @@ class BaileysDirectGateway:
             pass
 
     async def stop_bridge(self):
+        """Stop the bridge subprocess (non-blocking)."""
         self._running = False
+        # Close the shared HTTP session
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
         if self._process:
             try:
                 self._process.terminate()
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    self._process.kill()
+                    await self._process.wait()
+            except ProcessLookupError:
+                pass
             self._process = None
 
     async def send_message(self, to: str, message: str) -> bool:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.bridge_url}/send",
-                    json={"to": to, "message": message},
-                    timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    if resp.status != 200:
-                        _LOGGER.error("Bridge send error: %s", await resp.text())
-                        return False
-                    return True
+            session = self._get_session()
+            async with session.post(f"{self.bridge_url}/send",
+                json={"to": to, "message": message},
+                timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    _LOGGER.error("Bridge send error: %s", await resp.text())
+                    return False
+                return True
         except aiohttp.ClientError as err:
             _LOGGER.error("Bridge send failed: %s", err)
             return False
 
     async def send_image(self, to: str, image_url: str, caption: str = "") -> bool:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.bridge_url}/send-image",
-                    json={"to": to, "image_url": image_url, "caption": caption},
-                    timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    return resp.status == 200
+            session = self._get_session()
+            async with session.post(f"{self.bridge_url}/send-image",
+                json={"to": to, "image_url": image_url, "caption": caption},
+                timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                return resp.status == 200
         except aiohttp.ClientError as err:
             _LOGGER.error("Bridge send image failed: %s", err)
             return False
 
     async def get_status(self) -> dict:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.bridge_url}/status",
-                    timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
+            session = self._get_session()
+            async with session.get(f"{self.bridge_url}/status",
+                timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
         except Exception:
             pass
         return {"status": "bridge_unreachable"}
 
     async def get_qr_code(self) -> dict:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.bridge_url}/qr",
-                    timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
+            session = self._get_session()
+            async with session.get(f"{self.bridge_url}/qr",
+                timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
         except Exception:
             pass
         return {"status": "bridge_unreachable"}
 
     async def logout(self) -> bool:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.bridge_url}/logout",
-                    timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    return resp.status == 200
+            session = self._get_session()
+            async with session.post(f"{self.bridge_url}/logout",
+                timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                return resp.status == 200
         except Exception:
             return False
 

@@ -352,8 +352,7 @@ class HomeAwareness:
             for area_name, categories in floor.items():
                 for entities in categories.values():
                     for e in entities:
-                        e["_area"] = area_name
-                        all_entities.append(e)
+                        all_entities.append({**e, "_area": area_name})
         for entities in unassigned.values():
             all_entities.extend(entities)
 

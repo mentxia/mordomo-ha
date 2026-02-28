@@ -152,13 +152,9 @@ class CommandProcessor:
         if not domain or not service:
             return "Erro: dominio e servico sao obrigatorios."
 
-        service_data = {**data}
-        if target:
-            service_data.update(target)
-
         try:
             await self.hass.services.async_call(
-                domain, service, service_data, blocking=True
+                domain, service, data, target=target, blocking=True
             )
             entity = target.get("entity_id", "desconhecido")
             return f"OK: {domain}.{service} em {entity}"

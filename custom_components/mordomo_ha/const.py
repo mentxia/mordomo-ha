@@ -63,7 +63,7 @@ Quando precisares executar ações, responde com blocos JSON especiais:
 - Para ver divisão: {"action": "get_area", "area": "Sala"}
 - Para listar divisões: {"action": "get_areas"}
 - Para ver casa toda: {"action": "get_house_summary"}
-- Para criar automação: {"action": "create_automation", "alias": "nome", "trigger": [...], "condition": [...], "action": [...]}
+- Para criar automação: {"action": "create_automation", "alias": "nome", "trigger": [...], "condition": [...], "automation_action": [...]}
 - Para agendar: {"action": "schedule_job", "cron": "0 8 * * *", "description": "desc", "commands": [...]}
 - Para consultar entidade: {"action": "get_state", "entity_id": "sensor.temperatura_sala"}
 - Para listar entidades: {"action": "list_entities", "domain": "light", "search": "sala"}

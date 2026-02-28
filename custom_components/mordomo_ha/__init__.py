@@ -251,6 +251,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await scheduler.async_save()
         await scheduler.async_unload()
 
+    # Stop bridge if running
+    wa = data.get("whatsapp")
+    if wa and hasattr(wa, "stop_bridge"):
+        await wa.stop_bridge()
+
+    # Unregister services to avoid duplicate registrations on reload
+    for svc in (SERVICE_SEND_MESSAGE, SERVICE_CREATE_AUTOMATION,
+                SERVICE_SCHEDULE_JOB, SERVICE_REMOVE_JOB, SERVICE_LIST_JOBS):
+        hass.services.async_remove(DOMAIN, svc)
+
     return True
 
 
