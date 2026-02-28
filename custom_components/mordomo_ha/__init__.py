@@ -91,7 +91,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Build webhook URL for the bridge to forward messages to
     webhook_id = f"{WEBHOOK_ID_PREFIX}{entry.entry_id}"
-    internal_webhook_url = f"http://homeassistant.local:8123/api/webhook/{webhook_id}"
+    # Use the HA internal URL if available, otherwise fallback to localhost
+    try:
+        internal_url = hass.config.internal_url or "http://homeassistant.local:8123"
+    except AttributeError:
+        internal_url = "http://homeassistant.local:8123"
+    internal_webhook_url = f"{internal_url.rstrip('/')}/api/webhook/{webhook_id}"
     bridge_port = config.get("bridge_port", 3781)
 
     # If Baileys direct and API URL is set, use it as external bridge URL
@@ -111,8 +116,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if external_bridge_url and hasattr(wa, "bridge_url"):
             wa.bridge_url = external_bridge_url.rstrip("/")
     except Exception as err:
-        _LOGGER.error("Failed to create WhatsApp gateway: %s", err)
-        return False
+        _LOGGER.error("Failed to create WhatsApp gateway: %s (continuing anyway)", err)
+        # Create a basic gateway so the integration still loads
+        wa = create_whatsapp_gateway(
+            "baileys_direct", "", "", "",
+            bridge_port=bridge_port,
+            webhook_url=internal_webhook_url,
+            ha_token="",
+            auth_dir="",
+        )
 
     # Start Baileys bridge if using direct connection AND no external bridge
     if wa_gateway_type == "baileys_direct" and hasattr(wa, "start_bridge"):
@@ -120,23 +132,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Using external Baileys bridge at %s", external_bridge_url)
         else:
             # Try to find the bridge add-on first (runs on host network port 3781)
+            # On HAOS the add-on runs on the host network, reachable at multiple addresses
             import aiohttp
-            addon_bridge_url = f"http://127.0.0.1:{bridge_port}"
+
             addon_found = False
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        f"{addon_bridge_url}/health",
-                        timeout=aiohttp.ClientTimeout(total=2),
-                    ) as resp:
-                        if resp.status == 200:
-                            wa.bridge_url = addon_bridge_url
-                            addon_found = True
-                            _LOGGER.info(
-                                "Found Mordomo Bridge add-on at %s", addon_bridge_url
-                            )
-            except Exception:
-                pass
+            bridge_candidates = [
+                f"http://127.0.0.1:{bridge_port}",
+                f"http://localhost:{bridge_port}",
+                f"http://homeassistant.local:{bridge_port}",
+            ]
+
+            for candidate_url in bridge_candidates:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"{candidate_url}/health",
+                            timeout=aiohttp.ClientTimeout(total=3),
+                        ) as resp:
+                            if resp.status == 200:
+                                wa.bridge_url = candidate_url
+                                addon_found = True
+                                _LOGGER.info(
+                                    "Found Mordomo Bridge at %s", candidate_url
+                                )
+                                break
+                except Exception:
+                    continue
 
             if not addon_found:
                 # Try starting local bridge (works on Docker/venv installs with Node.js)
@@ -146,12 +167,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     if not bridge_ok:
                         _LOGGER.warning(
                             "WhatsApp bridge not available. "
-                            "Install the 'Mordomo Bridge' add-on from: "
-                            "https://github.com/mentxia/mordomo-ha-addons"
+                            "Install the 'Mordomo Bridge' add-on or set an "
+                            "external bridge URL in the WhatsApp API URL field."
                         )
                 except Exception as bridge_err:
                     _LOGGER.warning(
-                        "Bridge error: %s. Install the Mordomo Bridge add-on.",
+                        "Bridge error: %s. Install the Mordomo Bridge add-on "
+                        "or ensure Node.js is available.",
                         bridge_err,
                     )
 

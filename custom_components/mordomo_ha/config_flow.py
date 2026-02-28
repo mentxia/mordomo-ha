@@ -115,10 +115,14 @@ class MordomoHAConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            bridge_port = user_input.get("bridge_port", 3781)
-            if not (1024 <= int(bridge_port) <= 65535):
+            try:
+                bridge_port = int(user_input.get("bridge_port", 3781))
+                if not (1024 <= bridge_port <= 65535):
+                    errors["bridge_port"] = "invalid_port"
+            except (ValueError, TypeError):
                 errors["bridge_port"] = "invalid_port"
-            else:
+
+            if not errors:
                 self._data.update(user_input)
                 return await self.async_step_security()
 

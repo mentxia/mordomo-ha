@@ -211,12 +211,17 @@ class MordomoPanelView(HomeAssistantView):
 
     async def get(self, request):
         """Serve the panel HTML."""
+        hass = request.app["hass"]
         panel_path = os.path.join(
             os.path.dirname(__file__), "panel", "index.html"
         )
-        try:
+
+        def _read_panel():
             with open(panel_path, "r", encoding="utf-8") as f:
-                html = f.read()
+                return f.read()
+
+        try:
+            html = await hass.async_add_executor_job(_read_panel)
             return web.Response(text=html, content_type="text/html")
         except FileNotFoundError:
             return web.Response(

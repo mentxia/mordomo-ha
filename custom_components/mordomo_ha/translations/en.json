@@ -1,5 +1,8 @@
 {
   "config": {
+    "error": {
+      "invalid_port": "Invalid port. Use a value between 1024 and 65535."
+    },
     "step": {
       "user": {
         "title": "Mordomo HA - Choose LLM",
@@ -20,10 +23,11 @@
       },
       "whatsapp": {
         "title": "WhatsApp Configuration",
-        "description": "Configure WhatsApp connection. You can use Meta's official API or a self-hosted gateway.",
+        "description": "Configure WhatsApp connection. {baileys_note}",
         "data": {
           "whatsapp_gateway": "WhatsApp Gateway",
-          "whatsapp_api_url": "API URL",
+          "bridge_port": "Bridge Port (Baileys)",
+          "whatsapp_api_url": "API URL (external, optional)",
           "whatsapp_api_key": "API Key / Token",
           "whatsapp_phone_id": "Phone ID / Instance Name"
         }

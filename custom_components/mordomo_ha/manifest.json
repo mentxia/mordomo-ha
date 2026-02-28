@@ -1,14 +1,15 @@
 {
   "domain": "mordomo_ha",
   "name": "Mordomo HA - WhatsApp Smart Butler",
-  "codeowners": ["@joao"],
+  "codeowners": ["@mentxia"],
   "config_flow": true,
   "dependencies": ["webhook", "frontend", "http"],
-  "documentation": "https://github.com/joao/mordomo-ha",
+  "documentation": "https://github.com/mentxia/mordomo-ha",
+  "homeassistant": "2024.1.0",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/joao/mordomo-ha/issues",
+  "issue_tracker": "https://github.com/mentxia/mordomo-ha/issues",
   "requirements": [
     "croniter>=2.0.0"
   ],
-  "version": "1.0.1"
+  "version": "1.0.2"
 }
